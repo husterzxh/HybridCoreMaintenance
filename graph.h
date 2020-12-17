@@ -40,7 +40,7 @@ public:
     int vertexNum;    // 节点个数
     int edgeNum;    // 边个数
     vector<int> allcores;    // 所有节点核值
-    vector<int> updatedVertex;
+    vector<int> updatedVertex;    // 核值被更新的节点
     int visitVerNum;
     int visitEdgeNum;
     int visitandremoved;
@@ -263,63 +263,58 @@ public:
 // main Methods for centralized algorithm(TRAVERSAL)
 // --------------------------------------------------------------------------
 
-    /* compute MCD for all vertices
+    /** compute MCD for all vertices
     */
     void computeMcd() {
         for (int v=0; v<vertexNum; v++) {
-            for (int j=0; j<edges[v].size(); j++)
-            {
+            for (int j=0; j<edges[v].size(); j++) {
                 int w=edges[v][j];
                 int corev=vertices[v].core;
                 int corew=vertices[w].core;
-                if(corew >= corev){
+                if (corew >= corev) {
                     vertices[v].mcd++;
                 }
             }
         }
     }
 
-    /**
-    *compute PCD for all vertices
+    /** compute PCD for all vertices
     */
     void computePcd(){
-        for(int v = 0;v < vertexNum;v++){
-            for(int j=0;j<edges[v].size();j++)
-            {
+        for(int v = 0;v < vertexNum;v++) {
+            for(int j=0;j<edges[v].size();j++) {
                 int w=edges[v][j];
                 int corev=vertices[v].core;
                 int corew=vertices[w].core;
                 int mcdw=vertices[w].mcd;
                 if(corew > corev ||
-                (corew == corev && mcdw> corev)){
+                (corew == corev && mcdw> corev)) {
                         vertices[v].pcd++;
                 }
             }
         }
     }
 
-    /**
-    *compute MCD for a vertex v
+    /** compute MCD for a vertex v
     */
-    int computeMcd(int v){
-        vertices[v].mcd= 0;
+    int computeMcd(int v) {
+        vertices[v].mcd = 0;
         int corev = vertices[v].core;
         int sizev = edges[v].size();
-        for(int j=0;j<sizev;j++)
+        for(int j=0; j<sizev; j++)
         {
             int w = edges[v][j];
             int corew = vertices[w].core;
-            if(corew >= corev){
+            if(corew >= corev) {
                 vertices[v].mcd++;
             }
         }
         return sizev;
     }
 
-    /**
-    *compute PCD for a vertex v, all MCDs are already known
+    /** compute PCD for a vertex v, all MCDs are already known
     */
-    int computePcd(int v){
+    int computePcd(int v) {
         int visitNum = 0;
         vertices[v].pcd = 0;
         int corev = vertices[v].core;
@@ -338,42 +333,58 @@ public:
         return visitNum;
     }
 
-    /** prepareMcd for an edge <u,v>
+    /** prepareMcd for an edge <u,v> 重新计算u和v邻居节点的mcd
     **/
     void prepareMcd(int u, int v) {
         computeMcd(v);
         computeMcd(u);
-        for(int j=0;j<edges[u].size();j++)
-        {
+        for (int j=0; j<edges[u].size(); j++) {
             int w=edges[u][j];
             computeMcd(w);
         }	
-        for(int j=0;j<edges[v].size();j++)
-        {
+        for(int j=0;j<edges[v].size();j++) {
             int w=edges[v][j];
             computeMcd(w);
         }
     }
 
-    /**
-    preparePcd for an edge <u,v>
+    /** preparePcd for an edge <u,v> 重新计算u和v邻居节点的pcd
     **/
-    void preparePcd(int u,int v){
+    void preparePcd(int u,int v) {
         computePcd(v);
         computePcd(u);
-        for(int j=0;j<edges[u].size();j++)
-        {
+        for (int j=0;j<edges[u].size();j++) {
             int w=edges[u][j];
             computePcd(w);
         }	
-        for(int j=0;j<edges[v].size();j++)
-        {
+        for (int j=0;j<edges[v].size();j++) {
             int w=edges[v][j];
             computePcd(w);
+        }
+    }
+
+    /** 重置所有节点的标志位(visited removed)和辅助变量(cd)
+     */
+    void resetVertex(){
+        for (int v = 0; v < vertexNum;v++) {
+            vertices[v].visited=false;
+            vertices[v].removed=false;
+            vertices[v].cd=0;
+        }
+    }
+
+    /** 重置所有节点的辅助变量(mcd pcd cd)
+     */
+    void resetRcds() {
+        for (int v = 0; v < vertexNum; v++) {
+            vertices[v].mcd=0;
+            vertices[v].pcd=0;
+            vertices[v].cd=0;
         }
     }
 
     /** delete all selected edges and conduct the centralized algorithm
+     * 多次执行TRAVERSAL算法用于批量更新
     */
     void Deletion(vector<pair<int,int> > allNewEdges)
     {//delete edges
@@ -381,14 +392,14 @@ public:
         computePcd();
         visitEdgeNum=0;
         visitandremoved = 0;
-        for(int k=0;k < allNewEdges.size();k ++){
+        for (int k=0; k < allNewEdges.size(); k++) {
             int a = allNewEdges[k].first;
             int b = allNewEdges[k].second;
-            if(deleteEdge(a,b) && deleteEdge(b,a)){
+            if (deleteEdge(a,b) && deleteEdge(b,a)) {
                 prepareMcd(a,b);
                 TravelDelete(a,b);
-                for(int i=0;i<vertexNum;i++){						
-                    if((vertices[i].visited)&&(vertices[i].removed)){
+                for (int i=0; i<vertexNum; i++) {
+                    if ((vertices[i].visited)&&(vertices[i].removed)) {
                         vertices[i].core--;
                         updatedVertex.push_back(i);
                         computeMcd(i);
@@ -412,6 +423,204 @@ public:
             }
         }
         resetRcds();
+    }
+
+    /** deal with one edge deletion
+     * @param u1: 删除边的起始节点
+     * @param u2: 删除边的目的节点
+     */
+    void TravelDelete(int u1, int u2)
+    {
+        int r = u1;    // 遍历的根节点
+        int coreu1 = vertices[u1].core;
+        int coreu2 = vertices[u2].core;
+        int k = coreu1;
+        // 找遍历的根节点
+        if (coreu1 > coreu2) { 
+            r=u2;
+            k=coreu2;
+        }
+        // 只有一个根节点
+        if (coreu1 != coreu2) {
+            //visitVerNum++;
+            vertices[r].visited = true;
+            vertices[r].cd = vertices[r].mcd;
+            int cdr = vertices[r].cd;
+            // 根节点的核值要减少，继续影响到其他可达树上节点
+            if (cdr < k) {
+                DeleteRemove(k,r);
+            }
+        }
+        // 两个都是根节点
+        else {
+            vertices[u1].visited = true;
+            vertices[u1].cd = vertices[u1].mcd;
+            int cdu1 = vertices[u1].cd;
+            if(cdu1 < k) {
+                DeleteRemove(k,u1);
+            }
+            vertices[u2].visited = true;
+            vertices[u2].cd = vertices[u2].mcd;
+            int cdu2 = vertices[u2].cd;
+            if (!vertices[u2].removed && cdu2 < k ) {
+                DeleteRemove(k,u2);
+            }
+            //visitVerNum+=2;
+        }
+    }
+
+    /** 被TravelDelete调用，遍历可达树
+     * @param k: 根节点的核值
+     * @param v: 根节点
+     */
+    void DeleteRemove(int k, int v)
+    {
+        vertices[v].removed = true;
+        vertices[v].core--;
+        for (int i=0; i<edges[v].size(); i++) {
+            int w= edges[v][i];
+            int corew = vertices[w].core;
+            if (corew == k) {
+                //visitVerNum++;
+                if(!vertices[w].visited){
+                    vertices[w].cd += vertices[w].mcd;
+                    vertices[w].visited = true;
+                }
+                vertices[w].cd--;
+                int cdw = vertices[w].cd;
+                if (cdw < k && ! vertices[w].removed) {
+                    DeleteRemove(k,w);
+                }
+            }
+        }
+        visitEdgeNum+=edges[v].size();
+    }
+
+    /** insert all selected edges and conduct the centralized algorithm
+     * 多次执行TRAVERSAL算法用于批量更新
+    */
+    void Insertion(vector<pair<int,int> > allNewEdges)
+    {
+        computeMcd();
+        computePcd();
+        visitEdgeNum=0;
+        visitVerNum = 0;
+        for (int k=0; k < allNewEdges.size(); k ++) {
+            int a = allNewEdges[k].first;
+            int b = allNewEdges[k].second;
+            if(addEdge(a,b) && addEdge(b,a)) {
+                //computeMcd();
+                //computePcd();
+                prepareMcd(a,b);
+                preparePcd(a,b);
+                TravelInsert(a,b);
+                //update core numbers
+                for (int i=0; i<vertexNum; i++) {
+                    if ((vertices[i].visited) && (!vertices[i].removed)) {
+                        vertices[i].core++;
+                        //cout<<i<<endl;
+                        updatedVertex.push_back(i);
+                    }
+                    if (vertices[i].visited) {
+                        visitVerNum++;
+                    }
+                    if (vertices[i].removed) {
+                        visitVerNum++;
+                    }
+                }
+                //recompute MCD for u and its 1-hop neighbor
+                for (int i=0;i<updatedVertex.size();i++) {
+                    int u = updatedVertex[i];
+                    computeMcd(u);
+                    for (int j=0;j<edges[u].size();j++) {
+                        int w=edges[u][j];
+                        computeMcd(w);
+                    }
+                }
+                //recompute MCD for u and its 1,2-hop neighbor
+                for (int i=0; i<updatedVertex.size(); i++) {
+                    int u = updatedVertex[i];
+                    //if((vertices[u].visited)&&(!vertices[u].removed)){
+                    computePcd(u);//for u
+                    for (int j=0;j<edges[u].size();j++) {
+                        int w=edges[u][j];
+                        computePcd(w);//1-hop neighbor
+                        for(int p=0;p<edges[w].size(); p++)
+                        {
+                            int v=edges[w][p];
+                            computePcd(v);//2-hop neighbor
+                        }
+                    }
+                }
+                resetVertex();
+                //cout<<updatedVertex.size()<<" vertex increase cores"<<endl;
+                updatedVertex.clear();
+                //CheckCores();
+            }
+        }
+    }
+
+    /** deal with one edge insertion
+     * @param u1: 插入边的起始节点
+     * @param u2: 插入边的目的节点
+     */
+    void TravelInsert(int u1, int u2)
+    {
+        int r=u1;
+        int coreu1=vertices[u1].core;
+        int coreu2=vertices[u2].core;
+        if(coreu1 > coreu2){
+            r=u2;
+        }
+        stack<int> s;
+        s.push(r);
+        int K=vertices[r].core;
+        //cout<<"K = "<<K<<endl;
+        vertices[r].visited=true;
+        vertices[r].cd=vertices[r].pcd;
+        int cdr = vertices[r].cd;
+        while(!s.empty()){
+            int v=s.top();
+            s.pop();
+            int cdv = vertices[v].cd;
+            if(cdv > K){
+                for(int j=0;j<edges[v].size();j++){
+                    int w = edges[v][j];
+                    int corew = vertices[w].core;
+                    int mcdw = vertices[w].mcd;
+                    if(corew == K && mcdw > K &&(!vertices[w].visited)){
+                        s.push(w);
+                        vertices[w].visited = true;
+                        vertices[w].cd += vertices[w].pcd;
+                        //visitEdgeNum++;
+                    }
+                }
+                //visitEdgeNum+=edges[v].size();
+            }
+            else{
+                if(!vertices[v].removed){
+                    InsertRemovement(K,v);
+                }
+            }
+        }
+    }
+
+    void InsertRemovement(int k, int v)
+    {
+        vertices[v].removed=true;
+        for(int i=0;i<edges[v].size();i++){
+            int w=edges[v][i];
+            int corew = vertices[w].core;
+            if(corew == k){
+                //visitVerNum++;
+                vertices[w].cd--;
+                int cdw = vertices[w].cd;
+                if(cdw == k && !vertices[w].removed){
+                    InsertRemovement(k,w);
+                }
+            }
+        }
+        visitEdgeNum+=edges[v].size();
     }
 
 
