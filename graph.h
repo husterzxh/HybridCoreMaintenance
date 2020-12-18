@@ -11,6 +11,17 @@
 #include <unordered_map>
 using namespace std;
 
+/** sort the corepair according to core number by ascent
+ * @param v1: <id, core>
+ * @param v2: <id, core>
+ */
+bool cmp_by_core(const pair<int,int>& v1, const pair<int,int>& v2) {
+    if (v1.second == v2.second)
+        return v1.first < v2.first;
+    else
+        return v1.second > v2.second;
+}
+
 struct vertex {
     bool visited;
     bool removed;
@@ -569,7 +580,7 @@ public:
         int r=u1;
         int coreu1=vertices[u1].core;
         int coreu2=vertices[u2].core;
-        if(coreu1 > coreu2){
+        if (coreu1 > coreu2) {
             r=u2;
         }
         stack<int> s;
@@ -579,16 +590,16 @@ public:
         vertices[r].visited=true;
         vertices[r].cd=vertices[r].pcd;
         int cdr = vertices[r].cd;
-        while(!s.empty()){
+        while(!s.empty()) {
             int v=s.top();
             s.pop();
             int cdv = vertices[v].cd;
-            if(cdv > K){
-                for(int j=0;j<edges[v].size();j++){
+            if (cdv > K) {
+                for (int j=0;j<edges[v].size();j++) {
                     int w = edges[v][j];
                     int corew = vertices[w].core;
                     int mcdw = vertices[w].mcd;
-                    if(corew == K && mcdw > K &&(!vertices[w].visited)){
+                    if (corew == K && mcdw > K &&(!vertices[w].visited)) {
                         s.push(w);
                         vertices[w].visited = true;
                         vertices[w].cd += vertices[w].pcd;
@@ -597,25 +608,29 @@ public:
                 }
                 //visitEdgeNum+=edges[v].size();
             }
-            else{
-                if(!vertices[v].removed){
+            else {
+                if (!vertices[v].removed) {
                     InsertRemovement(K,v);
                 }
             }
         }
     }
 
+    /** 被TravelInsert调用，遍历可达树，从可达树上cd<=k的节点开始排除
+     * @param k: 节点的核值
+     * @param v: 节点
+     */
     void InsertRemovement(int k, int v)
     {
         vertices[v].removed=true;
-        for(int i=0;i<edges[v].size();i++){
+        for (int i=0; i<edges[v].size(); i++) {
             int w=edges[v][i];
             int corew = vertices[w].core;
-            if(corew == k){
+            if (corew == k) {
                 //visitVerNum++;
                 vertices[w].cd--;
                 int cdw = vertices[w].cd;
-                if(cdw == k && !vertices[w].removed){
+                if (cdw == k && !vertices[w].removed) {
                     InsertRemovement(k,w);
                 }
             }
@@ -623,6 +638,133 @@ public:
         visitEdgeNum+=edges[v].size();
     }
 
+// --------------------------------------------------------------------------
+// Methods for parallel algorithm
+// --------------------------------------------------------------------------
+
+    /** decrease core numbers for vertices that are visited and removed
+    */
+    void delCores() {
+        for (int i=0; i<vertexNum; i++) {
+            if ((vertices[i].visited) && (vertices[i].removed)) {
+                vertices[i].core--;
+                allcores[i] = vertices[i].core;
+                //cout<<i<<" -- core"<<endl;
+            }
+            if (vertices[i].visited) {
+                visitVerNum++;
+            }
+            if (vertices[i].removed) {
+                visitVerNum++;
+            }/**/
+            vertices[i].visited=false;
+            vertices[i].removed=false;
+            vertices[i].mcd=0;
+            vertices[i].pcd=0;
+            vertices[i].cd=0;
+        }
+    }
+
+    /** increase core numbers for vertices that are visited but not removed
+    */
+    void insCores() {
+        for (int i=0; i<vertexNum; i++) {
+            if ((vertices[i].visited) && (!vertices[i].removed)) {
+                vertices[i].core++;
+                allcores[i]= vertices[i].core;
+                //cout<<i<<" ++ core"<<endl;
+            }
+            if (vertices[i].visited) {
+                visitVerNum++;
+            }
+            if(vertices[i].removed){
+                visitVerNum++;
+            }/**/
+            vertices[i].visited=false;
+            vertices[i].removed=false;
+            vertices[i].mcd=0;
+            vertices[i].pcd=0;
+            vertices[i].cd=0;
+        }
+    }
+
+    /** given a superior edge set, compute the MCD for vertices in the EXPTree
+    */
+    void computeInsertMcd(vector<pair<int,int> > superioredges) {
+        int edgenums = superioredges.size();
+        map<int,bool> visited;	
+        for (int i = 0; i < edgenums; i++) {
+            stack<int> s;
+            int a = superioredges[i].first;
+            int b = superioredges[i].second;
+            int sizea = edges[a].size();
+            int sizeb = edges[b].size();
+            int corea = vertices[a].core;
+            int coreb = vertices[b].core;
+            int r = a;
+            int corer = corea;
+            int sizer = sizea;
+            if (corea > coreb) {
+                r = b;
+                corer = coreb;
+                sizer = sizeb;
+            }
+            if (!visited[r]) {
+                s.push(r);
+                //vertices[r].visited = true;
+                visited[r] = true;
+                for (int j=0;j<sizer;j++)
+                {
+                    int w = edges[r][j];
+                    int corew = vertices[w].core;
+                    if(corew >= corer){
+                        vertices[r].mcd++;
+                    }
+                }
+            while (!s.empty()) {
+                    int v=s.top();
+                    s.pop();
+                    int sizev = edges[v].size();
+                    int corev = vertices[v].core;
+                    for (int j=0; j<sizev; j++) {
+                        int p = edges[v][j];
+                        if (vertices[p].core == corev && !visited[p]) {
+                            s.push(p);
+                            //vertices[p].visited = true;
+                            visited[p] = true;
+                            if (!vertices[p].mcd) {
+                                int sizep = edges[p].size();
+                                int corep = vertices[p].core;
+                                for (int k = 0;k < sizep;k ++) {
+                                    int w = edges[p][k];
+                                    int corew = vertices[w].core;
+                                    if (corew >= corep) {
+                                        vertices[p].mcd++;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /** 将核值写入文件
+     * @param corefile: 文件名称
+    */
+    void WriteCores(string corefile) {
+        ofstream fcore(corefile.data());
+        vector<pair<int,int> > corepair;
+        for (int i=0; i<vertexNum; i++) {
+            corepair.push_back(make_pair(i,vertices[i].core));
+        }
+        sort(corepair.begin(), corepair.end(), cmp_by_core);
+        for (int i=0; i<corepair.size(); i++) {
+            fcore << corepair[i].first<< "," << corepair[i].second << endl;
+        }
+        fcore.close();
+    }
 
 };
 
