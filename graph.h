@@ -84,14 +84,14 @@ public:
 
     /** Returns the number of nodes in the graph.
      */
-    int getVertexNum()
+    int GetvertexNum()
     {
         return vertexNum;
     }
 
     /** Returns the number of edges in the graph.
      */
-    int getEdgeNum()
+    int GetedgeNum()
     {
         return edgeNum;
     }
