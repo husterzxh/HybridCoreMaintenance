@@ -721,6 +721,7 @@ map<int, vector<int> > toOrderEdges(vector<pair<int, int> > insEdges) {
       neighbors.emplace_back(to);
       orderEdges[from] = neighbors;
     }
+
     if (orderEdges.find(to) == orderEdges.end()) {
       vector<int> neighbors;
       neighbors.emplace_back(from);
@@ -733,6 +734,21 @@ map<int, vector<int> > toOrderEdges(vector<pair<int, int> > insEdges) {
     }
   }
   return orderEdges;
+}
+
+vector<pair<int, int> > toVectorEdges(map<int, vector<int> > orderEdges) {
+  vector<pair<int, int> > vectorEdges;
+  for (auto it = orderEdges.begin(); it != orderEdges.end(); it++) {
+    int from = it->first;
+    vector<int> neighbors = it->second;
+    for (auto it2 = neighbors.begin(); it2 != neighbors.end(); it2++) {
+      int to = *it2;
+      if (from < to) {
+        vectorEdges.emplace_back(make_pair(from, to));
+      }
+    }
+  }
+  return vectorEdges;
 }
 
 int main(int argc, char *argv[]) {
@@ -1084,18 +1100,21 @@ int main(int argc, char *argv[]) {
       del_t = (t_end.tv_sec - t_start.tv_sec) * 1000000 + (t_end.tv_usec - t_start.tv_usec);
       // std::cout << graph.visitVerNum << "\t";
       std::cout << "Delete" << '\t' << del_t << std::endl;
+      cout << graph.edgeCount / 2 << endl;
+      // graph.CheckCores();
+    }
+    graph.ComputeCores();
+    {//insert edges back
+      allInsEdges = toVectorEdges(orderEdges);
+      gettimeofday(&t_start, NULL);
+      // graph.Insertion(allNewEdges);
+      graph.Insertion(allInsEdges);
+      gettimeofday(&t_end, NULL);
+      ins_t = (t_end.tv_sec - t_start.tv_sec) * 1000000 + (t_end.tv_usec - t_start.tv_usec);
+      // std::cout << graph.visitVerNum << "\n";
+      std::cout << "Insert" << '\t' << ins_t << std::endl;
       graph.CheckCores();
     }
-    // graph.ComputeCores();
-    // {//insert edges back
-    //   gettimeofday(&t_start, NULL);
-    //   // graph.Insertion(allNewEdges);
-    //   graph.Insertion(allInsEdges);
-    //   gettimeofday(&t_end, NULL);
-    //   ins_t = (t_end.tv_sec - t_start.tv_sec) * 1000000 + (t_end.tv_usec - t_start.tv_usec);
-    //   // std::cout << graph.visitVerNum << "\n";
-    //   std::cout << "Insert" << '\t' << ins_t << std::endl;
-    // }
   }
   //   //matching with threads
   // else if (strcmp(argv[1], "-mp") == 0) {

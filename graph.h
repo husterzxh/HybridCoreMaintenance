@@ -59,6 +59,7 @@ public: int vertexNum;
 		int visitVerNum;
 		int visitEdgeNum;
 		int visitandremoved;
+		int edgeCount = 0;
 
 vector<vertex> vertices;
 /** Edges associated with the vertexes stored at this node
@@ -484,9 +485,18 @@ void DeleteRemove(int k, int v, map<int, vector<int> > &orderEdges)
 				if (!addEdge(v, *it) || !addEdge(*it, v)) {
 					cout << "add edge failed when delete edges " << endl;
 				}
+				vector<int> neighbors2 = orderEdges[*it];
+				for (auto it2 = neighbors2.begin(); it2 != neighbors2.end(); it2++) {
+					if (*it2 == v) {
+						neighbors2.erase(it2);
+						orderEdges[*it] = neighbors2;
+						break;
+					}
+				}
 				vertices[v].cd++;
 				neighbors.erase(it);
 				orderEdges[v] = neighbors;
+				edgeCount++;
 				break;
 			}
 			else if (vertices[*it].core == k) {
@@ -494,10 +504,19 @@ void DeleteRemove(int k, int v, map<int, vector<int> > &orderEdges)
 				if (!addEdge(v, *it) || !addEdge(*it, v)) {
 					cout << "add edge failed when delete edges " << endl;
 				}
+				vector<int> neighbors2 = orderEdges[*it];
+				for (auto it2 = neighbors2.begin(); it2 != neighbors2.end(); it2++) {
+					if (*it2 == v) {
+						neighbors2.erase(it2);
+						orderEdges[*it] = neighbors2;
+						break;
+					}
+				}
 				vertices[v].cd++;
 				vertices[*it].cd++;
 				neighbors.erase(it);
 				orderEdges[v] = neighbors;
+				edgeCount++;
 				break;
 			}
 			else {
