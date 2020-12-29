@@ -9,6 +9,10 @@
         "iosfwd": "cpp",
         "xhash": "cpp",
         "xtree": "cpp",
-        "xutility": "cpp"
+        "xutility": "cpp",
+        "mutex": "cpp",
+        "ostream": "cpp",
+        "functional": "cpp",
+        "condition_variable": "cpp"
     }
 }

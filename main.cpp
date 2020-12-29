@@ -34,11 +34,21 @@ void *TravelDelete(void *sameCoreEdges);
 
 int DeleteRemove(int k, int r);
 
+bool DecreseCore(int v, int k);
+
+map<int, vector<int> > toOrderEdges(vector<pair<int, int> > insEdges);
+
+vector<pair<int, int> > toVectorEdges(map<int, vector<int> > orderEdges);
+
+
 Graph graph;
 newGraph newgraph;
 vector<vector<pair<int, int> > > superiorEdges;
 //int thread_num = 16;
 ThreadPool *pool;
+// map<int, vector<int> > orderEdges;
+map<int, vector<int> > orderEdges;
+pthread_mutex_t orderMutex;
 
 //create finding threads to find superior edges,unused 
 void FindThreads(vector<params> &param) {
@@ -593,8 +603,15 @@ void *TravelDelete(void *sameCoreEdges) {
 int DeleteRemove(int k, int r) {
   int visitedEdgeNum = 0;
   stack<int> s;
-  s.push(r);
-  graph.vertices[r].removed = true;
+  // graph.vertices[r].removed = true;
+  pthread_mutex_lock(&orderMutex);
+  bool flag = DecreseCore(r, k);
+  pthread_mutex_unlock(&orderMutex);
+  if (flag) {
+    graph.vertices[r].removed = true;
+    s.push(r);
+  }
+
   while (!s.empty()) {
     int v = s.top();
     s.pop();
@@ -614,14 +631,76 @@ int DeleteRemove(int k, int r) {
         graph.vertices[w].cd--;
         int cdw = graph.vertices[w].cd;
         if (cdw < k && !graph.vertices[w].removed) {
-          graph.vertices[w].removed = true;
-          s.push(w);
+          pthread_mutex_lock(&orderMutex);
+          flag = DecreseCore(w, k);
+          pthread_mutex_unlock(&orderMutex);
+          if (flag) {
+            graph.vertices[w].removed = true;
+            s.push(w);
+          }
+          // graph.vertices[w].removed = true;
+          // s.push(w);
         }
       }
     }
     visitedEdgeNum += graph.edges[v].size();
   }
   return visitedEdgeNum;
+}
+
+/* 判断节点r是否应该减少核值，如果节点v上有优边插入，则不应该减少核值
+/* 返回值：true 应该减少核值，false 不应该减少核值
+*/
+bool DecreseCore(int v, int k) {
+  bool flag = true;
+  if (orderEdges.find(v) != orderEdges.end()) {
+    vector<int> neighbors = orderEdges[v];
+    for (auto it = neighbors.begin(); it != neighbors.end(); it++) {
+      if (graph.vertices[*it].core > k) {
+        flag = false;
+        if (!graph.addEdge(v, *it) || !graph.addEdge(*it, v)) {
+          cout << "add edge failed when delete edges" << endl;
+          break;
+        }
+        vector<int> neighbors2 = orderEdges[*it];
+        for (auto it2 = neighbors2.begin(); it2 != neighbors2.end(); it2++) {
+          if (*it2 == v) {
+            neighbors2.erase(it2);
+            orderEdges[*it] = neighbors2;
+            break;
+          }
+        }
+        graph.vertices[v].cd++;
+        neighbors.erase(it);
+        orderEdges[v] = neighbors;
+        break;
+      }
+      // else if (graph.vertices[*it].core == k) {
+      //   flag = false;
+      //   if (!graph.addEdge(v, *it) || !graph.addEdge(*it, v)) {
+      //     cout << "add edge failed when delete edges " << endl;
+      //     break;
+      //   }
+      //   vector<int> neighbors2 = orderEdges[*it];
+      //   for (auto it2 = neighbors2.begin(); it2 != neighbors2.end(); it2++) {
+      //     if (*it2 == v) {
+      //       neighbors2.erase(it2);
+      //       orderEdges[*it] = neighbors2;
+      //       break;
+      //     }
+			// 	}
+      //   graph.vertices[v].cd++;
+      //   graph.vertices[*it].cd++;
+      //   neighbors.erase(it);
+      //   orderEdges[v] = neighbors;
+      //   break;
+      // }
+      else {
+        ;
+      }
+    }
+  }
+  return flag;
 }
 
 /**
@@ -778,7 +857,7 @@ int main(int argc, char *argv[]) {
   // ifstream finedge(edgefile.data());
   vector<pair<int, int> > allNewEdges, alledges;
   vector<pair<int, int> > allInsEdges, allDelEdges;    // 插入边集，删除边集
-  map<int, vector<int> > orderEdges;
+  // map<int, vector<int> > orderEdges;
   vector<int> allcores;
   map<pair<int, int>, int> edgemap;
   struct timeval t_start, t_end, f_start, f_end;
@@ -915,182 +994,205 @@ int main(int argc, char *argv[]) {
   // }
 
   //   //superior algorithm without parallel
-  // else if (strcmp(argv[1], "-s") == 0) { //delete the edges first and then insert them back
-  //   //string output = path + fname.substr(0,2) + "_time_np.txt";
-  //   int newEdgeNum = newgraph.GetedgeNum() / 2;
-  //   std::cout << edge_file << "\t" << newEdgeNum << "\t";
-  //   //cout<<newEdgeNum<<endl;
-  //   int visitedEdgeNum = 0;
-  //   {//delete the edges
-  //     gettimeofday(&t_start, NULL);
-  //     long findTime = 0.0;
-  //     int round = 0;
-  //     graph.visitVerNum = 0;
-  //     while (newEdgeNum) {
-  //       round++;
-  //       vector<params> param;
-  //       gettimeofday(&f_start, NULL);
-  //       superiorEdges.push_back(GetSuperiorEdges());
-  //       /*param = newgraph.GetParams();
-  //       for(int index=0;index<param.size();index++){
-  //         int k = param[index].k;
-  //         superiorEdges.push_back(GetKSuperiorEdges(k));
-  //       }*/
-  //       gettimeofday(&f_end, NULL);
-  //       long dur = (f_end.tv_sec - f_start.tv_sec) * 1000000 + (f_end.tv_usec - f_start.tv_usec);
-  //       findTime += dur;
-  //       DeleteEdgesFromGraph(superiorEdges);
+  if (strcmp(argv[1], "-s") == 0) { //delete the edges first and then insert them back
+    //string output = path + fname.substr(0,2) + "_time_np.txt";
+    orderEdges = toOrderEdges(allInsEdges);
+    allNewEdges.swap(allDelEdges);
+    newgraph.Map_index(allNewEdges);
+    newgraph.SetCores(allcores);
+    int newEdgeNum = newgraph.GetedgeNum() / 2;
+    // std::cout << edge_file << "\t" << newEdgeNum << "\t";
+    //cout<<newEdgeNum<<endl;
+    int visitedEdgeNum = 0;
+    {//delete the edges
+      gettimeofday(&t_start, NULL);
+      long findTime = 0.0;
+      int round = 0;
+      graph.visitVerNum = 0;
+      while (newEdgeNum) {
+        round++;
+        vector<params> param;
+        gettimeofday(&f_start, NULL);
+        superiorEdges.push_back(GetSuperiorEdges());
+        /*param = newgraph.GetParams();
+        for(int index=0;index<param.size();index++){
+          int k = param[index].k;
+          superiorEdges.push_back(GetKSuperiorEdges(k));
+        }*/
+        gettimeofday(&f_end, NULL);
+        long dur = (f_end.tv_sec - f_start.tv_sec) * 1000000 + (f_end.tv_usec - f_start.tv_usec);
+        findTime += dur;
+        DeleteEdgesFromGraph(superiorEdges);
 
-  //       {//deleting threads and update cores for new graph
-  //         for (int i = 0; i < superiorEdges.size(); i++) {
-  //           TravelDelete(&superiorEdges[i]);
-  //         }
-  //         graph.delCores();
-  //         allcores = graph.GetAllcores();
-  //         newgraph.SetCores(allcores);
-  //         newEdgeNum = newgraph.GetedgeNum();
-  //         superiorEdges.clear();
-  //       }
-  //     }
-  //     gettimeofday(&t_end, NULL);
-  //     dur = (t_end.tv_sec - t_start.tv_sec) * 1000000 + (t_end.tv_usec - t_start.tv_usec);
-  //     std::cout << graph.visitVerNum << "\t";
-  //   }
+        {//deleting threads and update cores for new graph
+          for (int i = 0; i < superiorEdges.size(); i++) {
+            TravelDelete(&superiorEdges[i]);
+          }
+          graph.delCores();
+          allcores = graph.GetAllcores();
+          newgraph.SetCores(allcores);
+          newEdgeNum = newgraph.GetedgeNum();
+          superiorEdges.clear();
+        }
+      }
+      gettimeofday(&t_end, NULL);
+      dur = (t_end.tv_sec - t_start.tv_sec) * 1000000 + (t_end.tv_usec - t_start.tv_usec);
+      // std::cout << graph.visitVerNum << "\t";
+      cout << "Delete: " << dur << endl;
+    }
 
-  //   // check core number
-  //   graph.ComputeCores();
+    // check core number
+    // graph.ComputeCores();
+    graph.CheckCores();
+    
 
-  //   {//reconstruct new graph and set cores
-  //     allcores = graph.GetAllcores();
-  //     newgraph.clear();
-  //     newgraph.Map_index(allNewEdges);
-  //     newgraph.SetCores(allcores);
-  //   }
+    {//reconstruct new graph and set cores
+      allcores = graph.GetAllcores();
+      newgraph.clear();
+      allNewEdges.clear();
+      allInsEdges = toVectorEdges(orderEdges);
+      allNewEdges.swap(allInsEdges);
+      newgraph.Map_index(allNewEdges);
+      newgraph.SetCores(allcores);
+    }
 
-  //   {//insertion
-  //     graph.visitVerNum = 0;
-  //     visitedEdgeNum = 0;
-  //     newEdgeNum = newgraph.GetedgeNum();
-  //     gettimeofday(&t_start, NULL);
-  //     long findTime = 0.0;
-  //     int round = 0;
-  //     while (newEdgeNum) {
-  //       round++;
-  //       vector<params> param;
-  //       gettimeofday(&f_start, NULL);
-  //       superiorEdges.push_back(GetSuperiorEdges());
+    {//insertion
+      graph.visitVerNum = 0;
+      visitedEdgeNum = 0;
+      newEdgeNum = newgraph.GetedgeNum();
+      gettimeofday(&t_start, NULL);
+      long findTime = 0.0;
+      int round = 0;
+      while (newEdgeNum) {
+        round++;
+        vector<params> param;
+        gettimeofday(&f_start, NULL);
+        superiorEdges.push_back(GetSuperiorEdges());
 
-  //       gettimeofday(&f_end, NULL);
-  //       long dur = (f_end.tv_sec - f_start.tv_sec) * 1000000 + (f_end.tv_usec - f_start.tv_usec);
-  //       findTime += dur;
-  //       InsertEdgesIntoGraph(superiorEdges);
+        gettimeofday(&f_end, NULL);
+        long dur = (f_end.tv_sec - f_start.tv_sec) * 1000000 + (f_end.tv_usec - f_start.tv_usec);
+        findTime += dur;
+        InsertEdgesIntoGraph(superiorEdges);
 
-  //       {//insertion threads and update cores for new graph
-  //         for (int i = 0; i < superiorEdges.size(); i++) {
-  //           TravelInsertMcd(superiorEdges[i]);
-  //         }
-  //         graph.insCores();
-  //         allcores = graph.GetAllcores();
-  //         newgraph.SetCores(allcores);
-  //         newEdgeNum = newgraph.GetedgeNum();
-  //         superiorEdges.clear();
+        {//insertion threads and update cores for new graph
+          for (int i = 0; i < superiorEdges.size(); i++) {
+            TravelInsertMcd(superiorEdges[i]);
+          }
+          graph.insCores();
+          allcores = graph.GetAllcores();
+          newgraph.SetCores(allcores);
+          newEdgeNum = newgraph.GetedgeNum();
+          superiorEdges.clear();
 
-  //       }
-  //     }
-  //     std::cout << graph.visitVerNum << "\n";
-  //     gettimeofday(&t_end, NULL);
-  //     dur = (t_end.tv_sec - t_start.tv_sec) * 1000000 + (t_end.tv_usec - t_start.tv_usec);
-  //   }
-  // }
+        }
+      }
+      // std::cout << graph.visitVerNum << "\n";
+      gettimeofday(&t_end, NULL);
+      dur = (t_end.tv_sec - t_start.tv_sec) * 1000000 + (t_end.tv_usec - t_start.tv_usec);
+      cout << "Insertion: " << dur << endl;
+    }
+
+    graph.CheckCores();
+  }
 
   //   //superior algorithm with parallel thread pool
-  // else if (strcmp(argv[1], "-sp") == 0) { //delete the edges first and then insert them back
-  //   int newEdgeNum = newgraph.GetedgeNum() / 2;
-  //   //int delta = newgraph.GetDelta();
-  //   // std::cout << edge_file << "\t" << newEdgeNum << "\t";
-  //   //cout<<newEdgeNum<<endl;
-  //   {//delete the edges
-  //     gettimeofday(&t_start, NULL);
-  //     long findTime = 0.0;
-  //     int round = 0;
-  //     while (newEdgeNum) {
-  //       round++;
-  //       vector<params> param;
-  //       gettimeofday(&f_start, NULL);
-  //       param = newgraph.GetParams();
-  //       superiorEdges.resize(param.size());
-  //       FindThreads(param);
-  //       gettimeofday(&f_end, NULL);
-  //       long dur = (f_end.tv_sec - f_start.tv_sec) * 1000000 + (f_end.tv_usec - f_start.tv_usec);
-  //       findTime += dur;
-  //       DeleteEdgesFromGraph(superiorEdges);
+  else if (strcmp(argv[1], "-sp") == 0) { //delete the edges first and then insert them back
+    orderEdges = toOrderEdges(allInsEdges);
+    allNewEdges.swap(allDelEdges);
+    newgraph.Map_index(allNewEdges);
+    newgraph.SetCores(allcores);
+    int newEdgeNum = newgraph.GetedgeNum() / 2;
+    //int delta = newgraph.GetDelta();
+    // std::cout << edge_file << "\t" << newEdgeNum << "\t";
+    //cout<<newEdgeNum<<endl;
+    {//delete the edges
+      gettimeofday(&t_start, NULL);
+      long findTime = 0.0;
+      int round = 0;
+      while (newEdgeNum) {
+        round++;
+        vector<params> param;
+        gettimeofday(&f_start, NULL);
+        param = newgraph.GetParams();
+        superiorEdges.resize(param.size());
+        FindThreads(param);
+        gettimeofday(&f_end, NULL);
+        long dur = (f_end.tv_sec - f_start.tv_sec) * 1000000 + (f_end.tv_usec - f_start.tv_usec);
+        findTime += dur;
+        DeleteEdgesFromGraph(superiorEdges);
 
-  //       {//deleting threads and update cores for new graph
-  //         SuperiorThread(TravelDelete);
-  //         graph.delCores();
-  //         newgraph.SetCores(graph.allcores);
-  //         newEdgeNum = newgraph.GetedgeNum();
-  //         superiorEdges.clear();
-  //       }
-  //     }
+        {//deleting threads and update cores for new graph
+          SuperiorThread(TravelDelete);
+          graph.delCores();
+          newgraph.SetCores(graph.allcores);
+          newEdgeNum = newgraph.GetedgeNum();
+          superiorEdges.clear();
+        }
+      }
 
-  //     gettimeofday(&t_end, NULL);
-  //     dur = (t_end.tv_sec - t_start.tv_sec) * 1000000 + (t_end.tv_usec - t_start.tv_usec);
-  //     // std::cout << findTime << "\t";
-  //     // std::cout << dur << "\t" << round << "\t";
-  //     std::cout << "Delete" << '\t' << dur << "\t" << round << std::endl;
+      gettimeofday(&t_end, NULL);
+      dur = (t_end.tv_sec - t_start.tv_sec) * 1000000 + (t_end.tv_usec - t_start.tv_usec);
+      // std::cout << findTime << "\t";
+      // std::cout << dur << "\t" << round << "\t";
+      std::cout << "Delete" << '\t' << dur << "\t" << round << std::endl;
 
-  //   }
+    }
 
-  //   // check core number
-  //   graph.ComputeCores();
+    // check core number
+    // graph.ComputeCores();
+    graph.CheckCores();
 
-  //   {//reconstruct new graph and set cores
-  //     allcores = graph.GetAllcores();
-  //     newgraph.clear();
-  //     newgraph.Map_index(allNewEdges);
-  //     newgraph.SetCores(allcores);
-  //   }
+    {//reconstruct new graph and set cores
+      allcores = graph.GetAllcores();
+      newgraph.clear();
+      allNewEdges.clear();
+      allInsEdges = toVectorEdges(orderEdges);
+      allNewEdges.swap(allInsEdges);
+      newgraph.Map_index(allNewEdges);
+      newgraph.SetCores(allcores);
+    }
 
-  //   {//insertion
-  //     newEdgeNum = newgraph.GetedgeNum();
-  //     gettimeofday(&t_start, NULL);
-  //     long findTime = 0.0;
-  //     int round = 0;
-  //     while (newEdgeNum) {
-  //       round++;
-  //       vector<params> param;
-  //       gettimeofday(&f_start, NULL);
-  //       param = newgraph.GetParams();
-  //       superiorEdges.resize(param.size());
-  //       FindThreads(param);
-  //       gettimeofday(&f_end, NULL);
-  //       long dur = (f_end.tv_sec - f_start.tv_sec) * 1000000 + (f_end.tv_usec - f_start.tv_usec);
-  //       findTime += dur;
-  //       InsertEdgesIntoGraph(superiorEdges);
+    {//insertion
+      newEdgeNum = newgraph.GetedgeNum();
+      gettimeofday(&t_start, NULL);
+      long findTime = 0.0;
+      int round = 0;
+      while (newEdgeNum) {
+        round++;
+        vector<params> param;
+        gettimeofday(&f_start, NULL);
+        param = newgraph.GetParams();
+        superiorEdges.resize(param.size());
+        FindThreads(param);
+        gettimeofday(&f_end, NULL);
+        long dur = (f_end.tv_sec - f_start.tv_sec) * 1000000 + (f_end.tv_usec - f_start.tv_usec);
+        findTime += dur;
+        InsertEdgesIntoGraph(superiorEdges);
 
 
-  //       {//insertion threads and update cores for new graph
-  //         SuperiorThread(TravelInsertMcd);
-  //         graph.insCores();
-  //         newgraph.SetCores(graph.allcores);
-  //         newEdgeNum = newgraph.GetedgeNum();
-  //         superiorEdges.clear();
-  //       }
-  //     }
-  //     gettimeofday(&t_end, NULL);
-  //     dur = (t_end.tv_sec - t_start.tv_sec) * 1000000 + (t_end.tv_usec - t_start.tv_usec);
-  //     // std::cout << findTime << "\t";
-  //     // std::cout << dur << "\t" << round << "\n";
-  //     std::cout << "Insert" << '\t' << dur << "\t" << round << std::endl;
-  //   }
-  // }
+        {//insertion threads and update cores for new graph
+          SuperiorThread(TravelInsertMcd);
+          graph.insCores();
+          newgraph.SetCores(graph.allcores);
+          newEdgeNum = newgraph.GetedgeNum();
+          superiorEdges.clear();
+        }
+      }
+      gettimeofday(&t_end, NULL);
+      dur = (t_end.tv_sec - t_start.tv_sec) * 1000000 + (t_end.tv_usec - t_start.tv_usec);
+      // std::cout << findTime << "\t";
+      // std::cout << dur << "\t" << round << "\n";
+      std::cout << "Insert" << '\t' << dur << "\t" << round << std::endl;
+    }
+    graph.CheckCores();
+  }
 
     //centralized algs, traversal alg
-  if (strcmp(argv[1], "-c") == 0) {
+  else if (strcmp(argv[1], "-c") == 0) {
     // int newEdgeNum = newgraph.GetedgeNum() / 2;
     // std::cout << edge_file << "\t" << newEdgeNum << "\t";
     double ins_t, del_t;
+    map<int, vector<int> > orderEdges;
     {//delete the selected edges
       gettimeofday(&t_start, NULL);
       orderEdges = toOrderEdges(allInsEdges);
@@ -1167,9 +1269,10 @@ int main(int argc, char *argv[]) {
   //     // std::cout << ins_t << "\t" << colorTime << "\t" << round << "\n";
   //     std::cout << "Insert" << '\t' << ins_t << "\t" << round << std::endl;
   //   }
-  // } else {
-  //   cout << "wrong params!" << endl;
   // }
+  else {
+    cout << "wrong params!" << endl;
+  }
   {//close the file
     fingraph.close();
     finInsEdge.close();

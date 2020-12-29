@@ -103,8 +103,10 @@ Graph(int vNum, int eNum){
 
  bool addEdge(int from, int to)
 {
-    if(from == to)
-        return false;
+    if(from == to) {
+		// cout << from << " " << to << endl;
+		return false;
+	}
 	// Update size,add another  vertex
 	while(from+1 > vertexNum) {
 		vertexNum ++;
@@ -114,8 +116,10 @@ Graph(int vNum, int eNum){
     }
         // Search if the edge is already present; if so, stop here and return
 	for (int i = 0; i < edges[from].size(); i++) {
-		if (edges[from][i] == to)
+		if (edges[from][i] == to) {
+			// cout << from << " " << to << endl;
 			return false;
+		}		
 	}
 	// Finally store the edge
 	edges[from].push_back(to);
@@ -307,6 +311,7 @@ void Deletion(vector<pair<int,int> > allNewEdges, map<int, vector<int> > &orderE
 			//CheckCores();
 		}
 	}
+	cout << "numbers of visited edges: " << visitEdgeNum << endl;
 	resetRcds();
 }
 
@@ -480,6 +485,7 @@ void DeleteRemove(int k, int v, map<int, vector<int> > &orderEdges)
 	if (orderEdges.find(v) != orderEdges.end()) {
 		vector<int> neighbors = orderEdges[v];
 		for (auto it = neighbors.begin(); it != neighbors.end(); it++) {
+			visitEdgeNum++;
 			if (vertices[*it].core > k) {
 				flag = 0;
 				if (!addEdge(v, *it) || !addEdge(*it, v)) {
