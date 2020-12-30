@@ -40,6 +40,8 @@ map<int, vector<int> > toOrderEdges(vector<pair<int, int> > insEdges);
 
 vector<pair<int, int> > toVectorEdges(map<int, vector<int> > orderEdges);
 
+void PreProcess();
+
 
 Graph graph;
 newGraph newgraph;
@@ -48,6 +50,7 @@ vector<vector<pair<int, int> > > superiorEdges;
 ThreadPool *pool;
 // map<int, vector<int> > orderEdges;
 map<int, vector<int> > orderEdges;
+map<int, vector<int> > delOrderEdges;
 pthread_mutex_t orderMutex;
 
 //create finding threads to find superior edges,unused 
@@ -830,6 +833,58 @@ vector<pair<int, int> > toVectorEdges(map<int, vector<int> > orderEdges) {
   return vectorEdges;
 }
 
+void PreProcess() {
+    for (auto it1 = orderEdges.begin(); it1 != orderEdges.end(); it1++) {
+      int node = it1->first;
+      vector<int> ne1 = it1->second;
+      // 该节点上没有边删除
+      if (delOrderEdges.find(node) == delOrderEdges.end()) {
+        continue;
+      }
+      vector<int> ne2 = delOrderEdges[node];
+      int nodeCore = graph.vertices[node].core;
+      auto itn1 = ne1.begin();
+      auto itn2 = ne2.begin();
+      while (itn1 != ne1.end() && itn2 != ne2.end()) {
+        int core1 = graph.vertices[*itn1].core;
+        int core2 = graph.vertices[*itn2].core;
+        if (core1 > nodeCore && core2 > nodeCore) {
+          vector<int> vec = orderEdges[*itn1];
+          for (auto itV = vec.begin(); itV != vec.end(); itV++) {
+            if (*itV == node) {
+              vec.erase(itV);
+              orderEdges[*itn1] = vec;
+              break;
+            }
+          }
+          vec = delOrderEdges[*itn2];
+          for (auto itV = vec.begin(); itV != vec.end(); itV++) {
+            if (*itV == node) {
+              vec.erase(itV);
+              delOrderEdges[*itn2] = vec;
+              break;
+            }
+          }
+          itn1 = ne1.erase(itn1);
+          itn2 = ne2.erase(itn2);
+        }
+        else if (core1 > nodeCore && core2 <= nodeCore) {
+          itn2++;
+        }
+        else if (core1 <= nodeCore && core2 > nodeCore) {
+          itn1++;
+        }
+        else {
+          itn1++;
+          itn2++;
+        }
+
+      }
+      orderEdges[node] = ne1;
+      delOrderEdges[node] = ne2;
+    }
+}
+
 int main(int argc, char *argv[]) {
   // if (argc < 5) {
   //   cout << "Usage: -p(parallel)/-c(centralized)/-m(matching) graph_filename edge_filename threadnum" << endl;
@@ -1097,7 +1152,26 @@ int main(int argc, char *argv[]) {
 
   //   //superior algorithm with parallel thread pool
   else if (strcmp(argv[1], "-sp") == 0) { //delete the edges first and then insert them back
+    int init_ins_count = allInsEdges.size();
+    int init_del_count = allDelEdges.size();
+    int pre_ins_count;
+    int pre_del_count;
+    int final_ins_count;
+    
     orderEdges = toOrderEdges(allInsEdges);
+    delOrderEdges = toOrderEdges(allDelEdges);
+
+    // 预处理
+    gettimeofday(&t_start, NULL);
+    PreProcess();
+    gettimeofday(&t_end, NULL);
+    dur = (t_end.tv_sec - t_start.tv_sec) * 1000000 + (t_end.tv_usec - t_start.tv_usec);
+    cout << "PreProcess\t" << dur << endl;
+
+    allInsEdges = toVectorEdges(orderEdges);
+    allDelEdges = toVectorEdges(delOrderEdges);
+    pre_ins_count = allInsEdges.size();
+    pre_del_count = allDelEdges.size();
     allNewEdges.swap(allDelEdges);
     newgraph.Map_index(allNewEdges);
     newgraph.SetCores(allcores);
@@ -1147,6 +1221,7 @@ int main(int argc, char *argv[]) {
       newgraph.clear();
       allNewEdges.clear();
       allInsEdges = toVectorEdges(orderEdges);
+      final_ins_count = allInsEdges.size();
       allNewEdges.swap(allInsEdges);
       newgraph.Map_index(allNewEdges);
       newgraph.SetCores(allcores);
@@ -1185,6 +1260,10 @@ int main(int argc, char *argv[]) {
       std::cout << "Insert" << '\t' << dur << "\t" << round << std::endl;
     }
     graph.CheckCores();
+  
+    cout << "InitInsEdge\t" << init_ins_count << "\t" << "InitDelEdge\t" << init_del_count << endl;
+    cout << "PreInsEdge\t" << pre_ins_count << "\t" << "PreDelEdge\t" << pre_del_count << endl;
+    cout << "FinalInsEdge\t" << final_ins_count << endl;
   }
 
     //centralized algs, traversal alg
